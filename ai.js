@@ -1,13 +1,18 @@
 window.PH = window.PH || {};
 
 PH.ai = (() => {
+  // All requests go through your own Vercel serverless function.
+  // The actual GROQ_API_KEY lives in .env.local (local) and Vercel
+  // Environment Variables (production) — never in this file.
+  const PROXY_URL = '/api/generate';
+
   // Models in priority order — auto-rotates on rate limit or error
   const MODELS = [
-    { id: 'llama-3.3-70b-versatile',  name: 'Llama 3.3 70B',   maxTokens: 4096 },
-    { id: 'llama-3.1-70b-versatile',  name: 'Llama 3.1 70B',   maxTokens: 4096 },
-    { id: 'llama3-70b-8192',          name: 'Llama 3 70B',      maxTokens: 4096 },
-    { id: 'mixtral-8x7b-32768',       name: 'Mixtral 8x7B',     maxTokens: 4096 },
-    { id: 'llama3-8b-8192',           name: 'Llama 3 8B',       maxTokens: 3000 },
+    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', maxTokens: 4096 },
+    { id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B', maxTokens: 4096 },
+    { id: 'llama3-70b-8192',         name: 'Llama 3 70B',   maxTokens: 4096 },
+    { id: 'mixtral-8x7b-32768',      name: 'Mixtral 8x7B',  maxTokens: 4096 },
+    { id: 'llama3-8b-8192',          name: 'Llama 3 8B',    maxTokens: 3000 },
   ];
 
   let activeModelIndex = 0;
@@ -20,42 +25,43 @@ PH.ai = (() => {
 
     const model = MODELS[(activeModelIndex + attempt) % MODELS.length];
 
-    const body = {
-      model: model.id,
-      messages,
-      temperature: 0.85,
-      max_tokens: model.maxTokens,
-    };
-
     let response;
     try {
-      response = await fetch('/api/generate', {
+      response = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          model: model.id,
+          messages,
+          temperature: 0.85,
+          max_tokens: model.maxTokens,
+        }),
       });
     } catch (networkErr) {
-      throw new Error('Network error. Check your connection.');
+      throw new Error('Network error — run via `vercel dev` locally, not by opening index.html directly.');
     }
 
-    // Rate limit or server error → try next model
     if (response.status === 429 || response.status === 503 || response.status === 502) {
-      console.warn(`[PH.ai] Model ${model.name} unavailable (${response.status}), trying next...`);
+      console.warn(`[PH.ai] ${model.name} unavailable (${response.status}), trying next model...`);
       return callGroq(messages, attempt + 1);
     }
 
+    if (response.status === 500) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Server error. Make sure GROQ_API_KEY is set in Vercel environment variables.');
+    }
+
     if (response.status === 401) {
-      throw new Error('Invalid API key. Please update GROQ_API_KEY in utils/ai.js');
+      throw new Error('Invalid API key. Check GROQ_API_KEY in your Vercel environment variables.');
     }
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      // Try next model for any server-side error
       if (attempt < MODELS.length - 1) {
-        console.warn(`[PH.ai] Model ${model.name} error (${response.status}), trying next...`);
+        console.warn(`[PH.ai] ${model.name} error (${response.status}), trying next model...`);
         return callGroq(messages, attempt + 1);
       }
-      throw new Error(`API error ${response.status}: ${errText}`);
+      const errBody = await response.text().catch(() => '');
+      throw new Error(`API error ${response.status}: ${errBody}`);
     }
 
     const data = await response.json();
@@ -66,38 +72,37 @@ PH.ai = (() => {
     }
 
     lastUsedModel = model.name;
-    // Prefer the working model for next call
     activeModelIndex = (activeModelIndex + attempt) % MODELS.length;
 
     return { content, model: model.name };
   }
 
-  // Parse JSON safely from AI response — handles markdown code fences
   function parseJSON(text) {
     let clean = text.trim();
-    // Strip markdown fences if present
     clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-    // Find first { and last } to extract JSON object
     const start = clean.indexOf('{');
     const end = clean.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('No JSON object found in response');
+    if (start === -1 || end === -1) throw new Error('No valid JSON found in AI response. Try again.');
     clean = clean.slice(start, end + 1);
-    return JSON.parse(clean);
+    try {
+      return JSON.parse(clean);
+    } catch (e) {
+      throw new Error('AI returned malformed JSON. Try again.');
+    }
   }
 
-  // Generate full project idea
   async function generateProjectIdea({ category, difficulty, techStack }) {
-    const systemPrompt = `You are a senior software architect and product designer. 
+    const systemPrompt = `You are a senior software architect and product designer.
 Generate creative, technically sound, and actually buildable project ideas.
-You MUST respond with a valid JSON object only — no preamble, no explanation, no markdown.
+You MUST respond with a valid JSON object only — no preamble, no explanation, no markdown fences.
 Every string field must be filled. Every array must have at least 3 items.`;
 
     const userPrompt = `Generate a unique project idea with these constraints:
 - Category: ${category}
 - Difficulty: ${difficulty}
-- Preferred Tech Stack: ${techStack.length ? techStack.join(', ') : 'Developer\'s choice'}
+- Preferred Tech Stack: ${techStack.length ? techStack.join(', ') : "Developer's choice"}
 
-Return ONLY a JSON object with this exact structure:
+Return ONLY a raw JSON object with this exact structure (no markdown, no explanation):
 {
   "title": "Specific, memorable project name",
   "tagline": "One punchy sentence describing the project",
@@ -112,7 +117,7 @@ Return ONLY a JSON object with this exact structure:
   ],
   "techStack": ["tech1", "tech2", "tech3", "tech4"],
   "difficulty": "${difficulty}",
-  "buildTime": "X hours / X days / X weeks",
+  "buildTime": "X hours or X days or X weeks",
   "roadmap": [
     { "step": 1, "title": "Project Setup", "description": "Initialize repo, configure tooling, set up dev environment" },
     { "step": 2, "title": "Core Architecture", "description": "Design data models, API structure, core business logic" },
@@ -139,11 +144,10 @@ Return ONLY a JSON object with this exact structure:
     return parsed;
   }
 
-  // Generate GitHub artifacts (README, folder structure, .gitignore)
   async function generateGithubArtifacts(project) {
-    const systemPrompt = `You are an expert open-source developer. 
+    const systemPrompt = `You are an expert open-source developer.
 Generate production-quality GitHub repository artifacts.
-You MUST respond with a valid JSON object only — no preamble, no markdown outside the JSON values.`;
+You MUST respond with a valid JSON object only — no preamble, no markdown outside JSON string values.`;
 
     const userPrompt = `Generate GitHub repository artifacts for this project:
 Title: ${project.title}
@@ -151,16 +155,12 @@ Description: ${project.tagline}
 Tech Stack: ${project.techStack.join(', ')}
 Difficulty: ${project.difficulty}
 
-Return ONLY a JSON object with this exact structure:
+Return ONLY a raw JSON object (no markdown fences, no explanation):
 {
-  "readme": "Full README.md content as a string (use \\n for newlines, include badges, sections: Description, Features, Tech Stack, Getting Started, Installation, Usage, Contributing, License)",
-  "folderStructure": "ASCII folder tree as a string (use \\n for newlines, realistic for the tech stack)",
-  "gitignore": "Complete .gitignore content for the tech stack (use \\n for newlines)"
-}
-
-The README should be comprehensive and professional. Include installation commands specific to the tech stack.
-The folder structure should be realistic — 15-25 files/folders shown.
-The .gitignore should cover all relevant patterns for ${project.techStack.join(', ')}.`;
+  "readme": "Full README.md content as a string. Use \\n for newlines. Include: badges, Description, Features, Tech Stack, Getting Started, Installation, Usage, Contributing, License sections.",
+  "folderStructure": "ASCII folder tree as a string. Use \\n for newlines. Show 15-25 realistic files and folders for the tech stack.",
+  "gitignore": "Complete .gitignore file content as a string. Use \\n for newlines. Cover all patterns relevant to ${project.techStack.join(', ')}."
+}`;
 
     const { content, model } = await callGroq([
       { role: 'system', content: systemPrompt },
