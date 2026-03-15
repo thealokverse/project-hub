@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Project Hub — Generate AI-powered project ideas, roadmaps, and GitHub-ready structures." />
+  <title>Project Hub — Build Something Brilliant</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Fonts preloaded -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Lucide Icons (CDN) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- GSAP + ScrollTrigger -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+</head>
+
+<body>
+
+  <!-- ── Navbar ─────────────────────────────────────────────── -->
+  <nav id="main-nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <span class="nav-logo-dot"></span>
+        Project Hub
+      </a>
+
+      <div class="nav-actions">
+        <!-- Saved Ideas -->
+        <button class="nav-btn" id="btn-open-saved" title="Saved Ideas">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+          </svg>
+          Saved
+          <span id="saved-count-badge">0</span>
+        </button>
+
+        <!-- Theme toggle -->
+        <button class="theme-btn" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
+          <span id="theme-icon">
+            <!-- Icon injected by app.js -->
+          </span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Saved Ideas Panel + Overlay ───────────────────────── -->
+  <div id="saved-overlay"></div>
+  <aside id="saved-panel" role="dialog" aria-label="Saved Ideas">
+    <div class="saved-panel-header">
+      <span class="saved-panel-title">Saved Ideas</span>
+      <button class="btn-close-panel" id="btn-close-saved" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div id="saved-ideas-list">
+      <!-- Rendered by storage.js -->
+    </div>
+  </aside>
+
+  <!-- ── Hero ──────────────────────────────────────────────── -->
+  <section id="hero-section">
+    <div class="hero-bg-grid"></div>
+    <div class="container hero-content">
+
+      <div class="hero-eyebrow">
+        <span class="hero-eyebrow-dot"></span>
+        AI-Powered Project Generator
+      </div>
+
+      <h1 class="hero-title">
+        Build something<br/>
+        <span class="hero-title-accent">brilliant.</span>
+      </h1>
+
+      <p class="hero-sub">
+        Generate high-quality project ideas, full roadmaps, and
+        GitHub-ready structures — powered by AI.
+      </p>
+
+      <div class="hero-cta-row">
+        <button class="btn-hero-primary" id="hero-cta">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          Start Generating
+        </button>
+        <button class="btn-hero-secondary" id="hero-trending-cta" onclick="document.getElementById('trending-section').scrollIntoView({behavior:'smooth'})">
+          Browse Trending Ideas
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Stats Strip ────────────────────────────────────────── -->
+  <div class="stats-strip">
+    <div class="stats-inner">
+      <div class="stat-item">
+        <span class="stat-value">10+</span>
+        <span class="stat-label">Categories</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">3</span>
+        <span class="stat-label">Difficulty Levels</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">20+</span>
+        <span class="stat-label">Tech Stacks</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value">∞</span>
+        <span class="stat-label">Unique Ideas</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Generator Section ─────────────────────────────────── -->
+  <section id="generator-section">
+    <div class="container">
+
+      <h2 class="section-heading">Generate Your Project</h2>
+      <p class="section-sub">Select your preferences and let AI build your next big idea.</p>
+
+      <div class="generator-panel">
+
+        <!-- Category -->
+        <div class="selector-group">
+          <div class="selector-label">
+            <i data-lucide="layout-grid" style="width:13px;height:13px;"></i>
+            Category
+            <span class="selector-label-req">Required</span>
+          </div>
+          <div class="chip-grid" id="category-grid">
+            <!-- Rendered by generator.js -->
+          </div>
+        </div>
+
+        <!-- Difficulty -->
+        <div class="selector-group">
+          <div class="selector-label">
+            <i data-lucide="bar-chart" style="width:13px;height:13px;"></i>
+            Difficulty
+            <span class="selector-label-req">Required</span>
+          </div>
+          <div class="chip-grid" id="difficulty-grid">
+            <!-- Rendered by generator.js -->
+          </div>
+        </div>
+
+        <!-- Tech Stack -->
+        <div class="selector-group">
+          <div class="selector-label">
+            <i data-lucide="layers" style="width:13px;height:13px;"></i>
+            Tech Stack
+            <span style="font-size:11px;color:var(--text-subtle);font-weight:400;text-transform:none;letter-spacing:0;">Optional — pick as many as you like</span>
+          </div>
+          <div class="chip-grid" id="stack-grid">
+            <!-- Rendered by generator.js -->
+          </div>
+        </div>
+
+        <!-- Footer / Generate Button -->
+        <div class="generator-footer">
+          <span class="generator-hint">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            Select category + difficulty to generate
+          </span>
+          <button id="generate-btn" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            Generate Idea
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Result Section ─────────────────────────────────────── -->
+  <section id="result-section" style="display:none;">
+    <div class="container">
+      <div id="result-inner">
+        <!-- Rendered by generator.js -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Trending Section ───────────────────────────────────── -->
+  <section id="trending-section">
+    <div class="container">
+      <h2 class="section-heading">Trending Ideas</h2>
+      <p class="section-sub">Handpicked project ideas that developers are building right now.</p>
+      <div class="trending-grid" id="trending-grid">
+        <!-- Rendered by trending.js -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <footer id="footer">
+    <div class="container footer-inner">
+      <div class="footer-logo">
+        <span class="nav-logo-dot"></span>
+        Project Hub
+      </div>
+      <span class="footer-copy">Build something brilliant. &copy; 2025</span>
+      <div class="footer-links">
+        <a href="#generator-section" class="footer-link">Generate</a>
+        <a href="#trending-section" class="footer-link">Trending</a>
+        <span class="footer-link" style="cursor:pointer;" onclick="document.getElementById('btn-open-saved').click()">Saved</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ── Scripts: load order matters ───────────────────────── -->
+  <script src="data/categories.js"></script>
+  <script src="utils/ai.js"></script>
+  <script src="utils/helpers.js"></script>
+  <script src="components/storage.js"></script>
+  <script src="components/roadmap.js"></script>
+  <script src="components/github.js"></script>
+  <script src="components/trending.js"></script>
+  <script src="components/generator.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
