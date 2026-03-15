@@ -176,6 +176,41 @@ PH.generator = (() => {
     if (resultSection) resultSection.style.display = 'none';
   }
 
+  async function generateGithubArtifactsForIdea(idea, ghBtn, ghContainer) {
+    ghBtn.disabled = true;
+    ghBtn.innerHTML = `<span class="btn-spinner"></span> Generating...`;
+    ghContainer.innerHTML = PH.github.renderSkeleton();
+
+    try {
+      const artifacts = await PH.ai.generateGithubArtifacts(idea);
+      ghContainer.innerHTML = PH.github.renderArtifacts(artifacts, idea.repoName);
+      PH.github.bindTabEvents(ghContainer);
+
+      if (typeof gsap !== 'undefined') {
+        gsap.fromTo(ghContainer,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.35, ease: 'power2.out' }
+        );
+      }
+
+      ghBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Regenerate`;
+    } catch (err) {
+      ghContainer.innerHTML = `<p class="error-text">${PH.helpers.escapeHtml(err.message)}</p>`;
+      ghBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+        Retry`;
+      PH.helpers.showToast(err.message, 'error', 4000);
+    } finally {
+      ghBtn.disabled = false;
+    }
+  }
+
   // ── Render full result ─────────────────────────────────────
   function renderResult(idea) {
     const resultSection = document.getElementById('result-section');
@@ -374,48 +409,7 @@ PH.generator = (() => {
     const ghContainer = container.querySelector('#github-artifacts-container');
     if (ghBtn && ghContainer) {
       ghBtn.addEventListener('click', async () => {
-        ghBtn.disabled = true;
-        ghBtn.innerHTML = `<span class="btn-spinner"></span> Generating...`;
-        ghContainer.innerHTML = PH.github.renderSkeleton();
-
-        try {
-          const artifacts = await PH.ai.generateGithubArtifacts(idea);
-          ghContainer.innerHTML = PH.github.renderArtifacts(artifacts, idea.repoName);
-          PH.github.bindTabEvents(ghContainer);
-          if (typeof gsap !== 'undefined') {
-            gsap.fromTo(ghContainer,
-              { opacity: 0, y: 12 },
-              { opacity: 1, y: 0, duration: 0.35, ease: 'power2.out' }
-            );
-          }
-          ghBtn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            Regenerate`;
-          ghBtn.disabled = false;
-          ghBtn.addEventListener('click', async () => {
-            // Allow regeneration
-            ghBtn.disabled = true;
-            ghBtn.innerHTML = `<span class="btn-spinner"></span> Regenerating...`;
-            ghContainer.innerHTML = PH.github.renderSkeleton();
-            try {
-              const newArtifacts = await PH.ai.generateGithubArtifacts(idea);
-              ghContainer.innerHTML = PH.github.renderArtifacts(newArtifacts, idea.repoName);
-              PH.github.bindTabEvents(ghContainer);
-            } catch (err) {
-              ghContainer.innerHTML = `<p class="error-text">${err.message}</p>`;
-            } finally {
-              ghBtn.disabled = false;
-              ghBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Regenerate`;
-            }
-          }, { once: true });
-        } catch (err) {
-          ghContainer.innerHTML = `<p class="error-text">${PH.helpers.escapeHtml(err.message)}</p>`;
-          ghBtn.disabled = false;
-          ghBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Retry`;
-          PH.helpers.showToast(err.message, 'error', 4000);
-        }
+        await generateGithubArtifactsForIdea(idea, ghBtn, ghContainer);
       });
     }
   }

@@ -9,10 +9,19 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'GROQ_API_KEY is not set in environment variables.' });
   }
 
-  const { model, messages, temperature, max_tokens } = req.body;
+  let body;
+  try {
+    body = typeof req.body === 'string'
+      ? JSON.parse(req.body || '{}')
+      : (req.body || {});
+  } catch {
+    return res.status(400).json({ error: 'Request body must be valid JSON.' });
+  }
 
-  if (!model || !messages) {
-    return res.status(400).json({ error: 'Missing required fields: model, messages' });
+  const { model, messages, temperature, max_tokens } = body;
+
+  if (!model || !Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'Missing required fields: model, messages[]' });
   }
 
   let groqResponse;
@@ -29,8 +38,16 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: 'Failed to reach Groq API. Check your network.' });
   }
 
-  const data = await groqResponse.json();
+  const raw = await groqResponse.text();
+  let data;
+
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = { error: raw || 'Groq returned an empty response.' };
+  }
 
   // Forward Groq's status code and response to the browser
+  res.setHeader('Cache-Control', 'no-store');
   return res.status(groqResponse.status).json(data);
 }

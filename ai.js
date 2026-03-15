@@ -9,14 +9,94 @@ PH.ai = (() => {
   // Models in priority order — auto-rotates on rate limit or error
   const MODELS = [
     { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', maxTokens: 4096 },
-    { id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B', maxTokens: 4096 },
-    { id: 'llama3-70b-8192',         name: 'Llama 3 70B',   maxTokens: 4096 },
-    { id: 'mixtral-8x7b-32768',      name: 'Mixtral 8x7B',  maxTokens: 4096 },
-    { id: 'llama3-8b-8192',          name: 'Llama 3 8B',    maxTokens: 3000 },
+    { id: 'qwen/qwen3-32b',                          name: 'Qwen 3 32B',          maxTokens: 4096 },
+    { id: 'openai/gpt-oss-20b',                      name: 'GPT OSS 20B',         maxTokens: 4096 },
+    { id: 'openai/gpt-oss-120b',                     name: 'GPT OSS 120B',        maxTokens: 4096 },
+    { id: 'llama-3.1-8b-instant',                    name: 'Llama 3.1 8B Instant', maxTokens: 3000 },
   ];
 
   let activeModelIndex = 0;
   let lastUsedModel = null;
+
+  async function readResponseBody(response) {
+    const text = await response.text().catch(() => '');
+    if (!text) return {};
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text };
+    }
+  }
+
+  function normalizeList(value, minItems = 0) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map(item => String(item ?? '').trim())
+      .filter(Boolean)
+      .slice(0, Math.max(value.length, minItems));
+  }
+
+  function normalizeRoadmap(value) {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .map((item, index) => {
+        const step = Number(item?.step) || index + 1;
+        const title = String(item?.title ?? '').trim();
+        const description = String(item?.description ?? '').trim();
+
+        if (!title || !description) return null;
+
+        return { step, title, description };
+      })
+      .filter(Boolean);
+  }
+
+  function ensureIdeaShape(parsed, requestedDifficulty, requestedStack) {
+    const features = normalizeList(parsed.features, 3);
+    const techStack = normalizeList(parsed.techStack, 3);
+    const extensions = normalizeList(parsed.extensions, 3);
+    const roadmap = normalizeRoadmap(parsed.roadmap);
+
+    const idea = {
+      title: String(parsed.title ?? '').trim(),
+      tagline: String(parsed.tagline ?? '').trim(),
+      problem: String(parsed.problem ?? '').trim(),
+      solution: String(parsed.solution ?? '').trim(),
+      features,
+      techStack: techStack.length ? techStack : requestedStack,
+      difficulty: String(parsed.difficulty ?? requestedDifficulty).trim() || requestedDifficulty,
+      buildTime: String(parsed.buildTime ?? '').trim(),
+      roadmap,
+      extensions,
+      repoName: String(parsed.repoName ?? '').trim(),
+    };
+
+    if (!idea.title || !idea.tagline || !idea.problem || !idea.solution || !idea.buildTime || !idea.repoName) {
+      throw new Error('AI response was missing required project details. Please try again.');
+    }
+
+    if (idea.features.length < 3 || idea.techStack.length < 3 || idea.extensions.length < 3 || idea.roadmap.length < 3) {
+      throw new Error('AI response was incomplete. Please try again.');
+    }
+
+    return idea;
+  }
+
+  function ensureGithubArtifactsShape(parsed) {
+    const artifacts = {
+      readme: String(parsed.readme ?? '').trim(),
+      folderStructure: String(parsed.folderStructure ?? '').trim(),
+      gitignore: String(parsed.gitignore ?? '').trim(),
+    };
+
+    if (!artifacts.readme || !artifacts.folderStructure || !artifacts.gitignore) {
+      throw new Error('AI response was missing GitHub repository artifacts. Please try again.');
+    }
+
+    return artifacts;
+  }
 
   async function callGroq(messages, attempt = 0) {
     if (attempt >= MODELS.length) {
@@ -24,12 +104,15 @@ PH.ai = (() => {
     }
 
     const model = MODELS[(activeModelIndex + attempt) % MODELS.length];
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
 
     let response;
     try {
       response = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           model: model.id,
           messages,
@@ -38,7 +121,12 @@ PH.ai = (() => {
         }),
       });
     } catch (networkErr) {
+      if (networkErr.name === 'AbortError') {
+        throw new Error('AI request timed out. Please try again.');
+      }
       throw new Error('Network error — run via `vercel dev` locally, not by opening index.html directly.');
+    } finally {
+      window.clearTimeout(timeoutId);
     }
 
     if (response.status === 429 || response.status === 503 || response.status === 502) {
@@ -47,8 +135,12 @@ PH.ai = (() => {
     }
 
     if (response.status === 500) {
-      const err = await response.json().catch(() => ({}));
+      const err = await readResponseBody(response);
       throw new Error(err.error || 'Server error. Make sure GROQ_API_KEY is set in Vercel environment variables.');
+    }
+
+    if (response.status === 404) {
+      throw new Error('AI endpoint not found. Deploy on Vercel or run the project with `vercel dev` locally.');
     }
 
     if (response.status === 401) {
@@ -60,11 +152,11 @@ PH.ai = (() => {
         console.warn(`[PH.ai] ${model.name} error (${response.status}), trying next model...`);
         return callGroq(messages, attempt + 1);
       }
-      const errBody = await response.text().catch(() => '');
-      throw new Error(`API error ${response.status}: ${errBody}`);
+      const errBody = await readResponseBody(response);
+      throw new Error(errBody.error || `API error ${response.status}.`);
     }
 
-    const data = await response.json();
+    const data = await readResponseBody(response);
     const content = data?.choices?.[0]?.message?.content;
 
     if (!content) {
@@ -140,8 +232,9 @@ Return ONLY a raw JSON object with this exact structure (no markdown, no explana
     ]);
 
     const parsed = parseJSON(content);
-    parsed._model = model;
-    return parsed;
+    const idea = ensureIdeaShape(parsed, difficulty, techStack);
+    idea._model = model;
+    return idea;
   }
 
   async function generateGithubArtifacts(project) {
@@ -168,8 +261,9 @@ Return ONLY a raw JSON object (no markdown fences, no explanation):
     ]);
 
     const parsed = parseJSON(content);
-    parsed._model = model;
-    return parsed;
+    const artifacts = ensureGithubArtifactsShape(parsed);
+    artifacts._model = model;
+    return artifacts;
   }
 
   return {

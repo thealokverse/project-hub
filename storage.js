@@ -143,6 +143,7 @@ PH.storage = (() => {
     }
     const overlay = document.getElementById('saved-overlay');
     if (overlay) overlay.classList.remove('show');
+    document.body.style.overflow = '';
   }
 
   return {
